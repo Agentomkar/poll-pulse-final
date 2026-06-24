@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from "@anthropic-ai/sdk";
-
-const SYSTEM_PROMPT = `You are Poll Pulse AI — a friendly, concise assistant for a real-time polling platform.
-Your capabilities: Help create poll questions, suggest improvements, explain polling best practices.
-Personality: Enthusiastic, keep responses SHORT (2-4 sentences), use emoji sparingly.`;
+import { askAnthropic, getAnthropicApiKey } from '@/lib/anthropic';
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured' },
-        { status: 500 }
-      );
-    }
+    getAnthropicApiKey();
 
-    const client = new Anthropic({ apiKey });
     const body = await req.json();
     const { messages } = body;
 
@@ -26,13 +15,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 512,
-      system: SYSTEM_PROMPT,
-      messages: messages.slice(-20),
-    });
-
+    const response = await askAnthropic(messages);
     const reply = response.content[0]?.type === 'text' ? response.content[0].text : 'Sorry, I could not generate a response.';
 
     return NextResponse.json({ reply });
