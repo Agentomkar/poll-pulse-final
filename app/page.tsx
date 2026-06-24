@@ -7,6 +7,7 @@ import SignupForm from '@/components/SignupForm';
 import CreatePollForm from '@/components/CreatePollForm';
 import PollCard from '@/components/PollCard';
 import AmbientBackground from '@/components/AmbientBackground';
+import AiChatBox from '@/components/AiChatBox';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { Activity, LogOut, Plus, ListFilter, TrendingUp, BarChart3, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -296,6 +297,9 @@ export default function Home() {
           </div>
         </main>
       )}
+
+      {/* AI Chatbox — only visible when logged in */}
+      {!authLoading && user && <AiChatBox />}
     </>
   );
 }

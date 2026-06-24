@@ -289,11 +289,12 @@ The app remains runnable after every change. Features are added screen by screen
 - Real-time voting and result updates
 - Production-ready deployment configs
 
-🚀 **Ready for Day 3**: AI-powered features
-- Groq API integration for poll suggestions
-- Real-time updates with WebSockets
-- Advanced polling features
-- User profiles and analytics
+✅ **Day 3 Complete**: AI-powered features
+- LLM provider: Groq
+- SDK: groq-sdk
+- Secret handling: GROQ_API_KEY in env
+- API route: `/api/ai`
+- Feature: AI chatbox sends text and receives real AI response
 
 ## Future Features (Day 3+)
 
