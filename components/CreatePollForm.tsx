@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, X, Send } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CreatePollFormProps {
   onSuccess?: () => void;
@@ -32,7 +35,6 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
     setLoading(true);
 
     try {
-      // Validate
       if (!question.trim()) {
         throw new Error('Please enter a poll question');
       }
@@ -64,7 +66,6 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
         throw new Error(data.error || 'Failed to create poll');
       }
 
-      // Reset form
       setQuestion('');
       setOptions(['', '']);
       onSuccess?.();
@@ -76,62 +77,101 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <motion.form 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.3 }}
+      onSubmit={handleSubmit} 
+      className="space-y-6"
+    >
       <div>
-        <label className="block text-sm font-medium text-slate-300">Poll Question</label>
+        <label className="block text-sm font-medium text-slate-300 mb-2">Poll Question</label>
         <input
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          className="mt-1 w-full rounded-lg bg-slate-800 px-4 py-2 text-white placeholder-slate-500 border border-slate-700 focus:border-emerald-500 focus:outline-none"
-          placeholder="What would you like to ask?"
+          className="w-full rounded-xl glass-input px-4 py-3 text-white placeholder-slate-500/50"
+          placeholder="What would you like to ask your audience?"
           maxLength={500}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">Options</label>
-        <div className="space-y-2">
-          {options.map((option, index) => (
-            <div key={index} className="flex gap-2">
-              <input
-                type="text"
-                value={option}
-                onChange={(e) => updateOption(index, e.target.value)}
-                className="flex-1 rounded-lg bg-slate-800 px-4 py-2 text-white placeholder-slate-500 border border-slate-700 focus:border-emerald-500 focus:outline-none"
-                placeholder={`Option ${index + 1}`}
-              />
-              {options.length > 2 && (
-                <button
-                  type="button"
-                  onClick={() => removeOption(index)}
-                  className="px-3 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
+        <label className="block text-sm font-medium text-slate-300 mb-3">Options</label>
+        <div className="space-y-3">
+          <AnimatePresence>
+            {options.map((option, index) => (
+              <motion.div 
+                key={index}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex gap-2"
+              >
+                <input
+                  type="text"
+                  value={option}
+                  onChange={(e) => updateOption(index, e.target.value)}
+                  className="flex-1 rounded-xl glass-input px-4 py-3 text-white placeholder-slate-500/50"
+                  placeholder={`Option ${index + 1}`}
+                />
+                {options.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => removeOption(index)}
+                    className="p-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-colors border border-rose-500/20"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
 
         <button
           type="button"
           onClick={addOption}
-          className="mt-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm"
+          className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors border border-white/10 text-sm font-medium"
         >
-          + Add Option
+          <Plus className="w-4 h-4" />
+          Add Option
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      <AnimatePresence>
+        {error && (
+          <motion.p 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="text-sm text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/20"
+          >
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-emerald-500 px-4 py-2 font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 rounded-xl btn-gradient px-4 py-3.5 font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed group"
       >
-        {loading ? 'Creating...' : 'Create Poll'}
+        {loading ? (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+            className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+          />
+        ) : (
+          <>
+            <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+            Launch Poll
+          </>
+        )}
       </button>
-    </form>
+    </motion.form>
   );
 }

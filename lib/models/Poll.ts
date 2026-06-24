@@ -7,12 +7,11 @@ export interface IPollOption {
 }
 
 export interface IPoll extends Document {
-  _id: string;
   question: string;
   options: IPollOption[];
   totalVotes: number;
   status: 'active' | 'closed';
-  createdBy: string;
+  createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
