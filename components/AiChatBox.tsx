@@ -2,19 +2,51 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Sparkles, Bot, User } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles, Bot, User, TrendingUp, Lightbulb, BarChart3, Zap } from 'lucide-react';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  isAnalysis?: boolean;
 }
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Hey! I'm your Poll Pulse AI assistant 🎯 Ask me for poll ideas, voting tips, or anything about the platform!",
+  content: "Hey! I'm your Poll Pulse AI assistant 🎯 I can analyze poll results, suggest poll ideas, give voting insights, or help you create better polls. What can I help you with?",
 };
+
+const SUGGESTED_PROMPTS = [
+  { icon: TrendingUp, text: 'Analyze poll trends', label: 'Trends' },
+  { icon: Lightbulb, text: 'Suggest poll ideas', label: 'Ideas' },
+  { icon: BarChart3, text: 'Best practices', label: 'Tips' },
+  { icon: Zap, text: 'Improve a poll', label: 'Improve' },
+];
+
+function formatResponse(content: string): { segments: { text: string; isBold: boolean; isBullet: boolean }[] }[] {
+  const lines = content.split('\n').filter(l => l.trim());
+  const paragraphs: { segments: { text: string; isBold: boolean; isBullet: boolean }[] }[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isBullet = trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*') || /^\d+\./.test(trimmed);
+    const segments: { text: string; isBold: boolean; isBullet: boolean }[] = [];
+    
+    // Simple bold detection: text between ** **
+    const parts = trimmed.split(/(\*\*[^*]+\*\*)/g);
+    for (const part of parts) {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        segments.push({ text: part.slice(2, -2), isBold: true, isBullet });
+      } else {
+        segments.push({ text: part, isBold: false, isBullet });
+      }
+    }
+    paragraphs.push({ segments });
+  }
+
+  return paragraphs;
+}
 
 export default function AiChatBox() {
   const [isOpen, setIsOpen] = useState(false);
@@ -38,8 +70,8 @@ export default function AiChatBox() {
     }
   }, [isOpen]);
 
-  const sendMessage = async () => {
-    const trimmed = input.trim();
+  const sendMessage = async (text?: string) => {
+    const trimmed = (text || input).trim();
     if (!trimmed || isLoading) return;
 
     const userMessage: Message = {
@@ -63,21 +95,29 @@ export default function AiChatBox() {
         body: JSON.stringify({ messages: chatHistory }),
       });
 
-      if (!res.ok) throw new Error('Failed to get response');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to get response');
+      }
 
       const data = await res.json();
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.reply,
+        isAnalysis: data.reply.length > 150,
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-    } catch {
+    } catch (err) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+        content: err instanceof Error
+          ? err.message.includes('ANTHROPIC_API_KEY')
+            ? "⚠️ The AI feature needs an API key to work. Ask your developer to set the **ANTHROPIC_API_KEY** in .env.local"
+            : `Sorry, I'm having trouble connecting: ${err.message}`
+          : "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -142,7 +182,7 @@ export default function AiChatBox() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="fixed bottom-24 right-6 z-[60] w-[380px] max-w-[calc(100vw-3rem)] h-[520px] max-h-[calc(100vh-8rem)] flex flex-col rounded-2xl overflow-hidden shadow-2xl shadow-black/40"
+            className="fixed bottom-24 right-6 z-[60] w-[380px] max-w-[calc(100vw-3rem)] h-[560px] max-h-[calc(100vh-8rem)] flex flex-col rounded-2xl overflow-hidden shadow-2xl shadow-black/40"
             style={{
               background: 'rgba(10, 10, 20, 0.85)',
               backdropFilter: 'blur(24px)',
@@ -162,7 +202,7 @@ export default function AiChatBox() {
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-white">Poll Pulse AI</h3>
-                <p className="text-xs text-cyan-400/70">Powered by Groq</p>
+                <p className="text-xs text-cyan-400/70">Powered by Claude</p>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -170,43 +210,88 @@ export default function AiChatBox() {
               </div>
             </div>
 
+            {/* Suggested Prompts (shown when no messages besides welcome) */}
+            {messages.length === 1 && !isLoading && (
+              <div className="px-4 pt-3 pb-1 shrink-0">
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                    <motion.button
+                      key={idx}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: idx * 0.08 }}
+                      onClick={() => sendMessage(prompt.text)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-cyan-500/30 text-slate-300 hover:text-cyan-300"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      <prompt.icon className="w-3 h-3" />
+                      {prompt.label}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-thin">
-              {messages.map((msg) => (
-                <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                      msg.role === 'user'
-                        ? 'bg-violet-500/20 border border-violet-500/30'
-                        : 'bg-cyan-500/20 border border-cyan-500/30'
-                    }`}
+              {messages.map((msg) => {
+                const paragraphs = formatResponse(msg.content);
+                return (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                   >
-                    {msg.role === 'user' ? (
-                      <User className="w-3.5 h-3.5 text-violet-300" />
-                    ) : (
-                      <Bot className="w-3.5 h-3.5 text-cyan-300" />
-                    )}
-                  </div>
+                    {/* Avatar */}
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                        msg.role === 'user'
+                          ? 'bg-violet-500/20 border border-violet-500/30'
+                          : 'bg-cyan-500/20 border border-cyan-500/30'
+                      }`}
+                    >
+                      {msg.role === 'user' ? (
+                        <User className="w-3.5 h-3.5 text-violet-300" />
+                      ) : (
+                        <Bot className="w-3.5 h-3.5 text-cyan-300" />
+                      )}
+                    </div>
 
-                  {/* Bubble */}
-                  <div
-                    className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-violet-500/20 text-violet-100 rounded-tr-md border border-violet-500/15'
-                        : 'bg-white/[0.06] text-slate-200 rounded-tl-md border border-white/[0.06]'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-                </motion.div>
-              ))}
+                    {/* Bubble */}
+                    <div
+                      className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-violet-500/20 text-violet-100 rounded-tr-md border border-violet-500/15'
+                          : 'bg-white/[0.06] text-slate-200 rounded-tl-md border border-white/[0.06]'
+                      }`}
+                    >
+                      {msg.role === 'assistant' ? (
+                        <div className="space-y-1">
+                          {paragraphs.map((para, pIdx) => (
+                            <p key={pIdx} className={para.segments.some(s => s.isBullet) ? 'pl-1' : ''}>
+                              {para.segments.map((seg, sIdx) => {
+                                const prefix = seg.isBullet && sIdx === 0 ? '• ' : '';
+                                return seg.isBold ? (
+                                  <strong key={sIdx} className="text-white font-semibold">
+                                    {prefix}{seg.text}
+                                  </strong>
+                                ) : (
+                                  <span key={sIdx}>{prefix}{seg.text}</span>
+                                );
+                              })}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>{msg.content}</p>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
 
               {/* Typing Indicator */}
               {isLoading && (
@@ -245,12 +330,12 @@ export default function AiChatBox() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask about polls..."
+                  placeholder="Ask about polls, trends, tips..."
                   className="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder-slate-500 py-2"
                   disabled={isLoading}
                 />
                 <button
-                  onClick={sendMessage}
+                  onClick={() => sendMessage()}
                   disabled={!input.trim() || isLoading}
                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 text-cyan-400"
                 >

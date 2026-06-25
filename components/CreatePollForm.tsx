@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Send } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Plus, X, Send, Sparkles, Loader2, Lightbulb } from 'lucide-react';
 
 interface CreatePollFormProps {
   onSuccess?: () => void;
@@ -14,6 +13,9 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
   const [options, setOptions] = useState(['', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{ question: string; options: string[] }[]>([]);
+  const [showAiSuggestions, setShowAiSuggestions] = useState(false);
 
   const addOption = () => {
     setOptions([...options, '']);
@@ -27,6 +29,92 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
     const newOptions = [...options];
     newOptions[index] = value;
     setOptions(newOptions);
+  };
+
+  const handleGetAiSuggestions = async () => {
+    const topic = question.trim() || 'general audience engagement';
+    setAiLoading(true);
+    setError('');
+    setAiSuggestions([]);
+    setShowAiSuggestions(true);
+
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: `Suggest 3 poll questions about "${topic}". For each, provide 4-6 answer options. Format your response EXACTLY like this (use **Question**: and **Options**: markers):
+
+**Question 1**: [question text]
+**Options**: [option1], [option2], [option3], [option4]
+
+**Question 2**: [question text]
+**Options**: [option1], [option2], [option3], [option4]
+
+**Question 3**: [question text]
+**Options**: [option1], [option2], [option3], [option4]`
+            }
+          ]
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to get suggestions');
+      }
+
+      const data = await res.json();
+      const parsedSuggestions = parseAiSuggestions(data.reply);
+      
+      if (parsedSuggestions.length === 0) {
+        throw new Error('Could not parse AI suggestions. Please try again.');
+      }
+
+      setAiSuggestions(parsedSuggestions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get AI suggestions');
+      setShowAiSuggestions(false);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const parseAiSuggestions = (text: string): { question: string; options: string[] }[] => {
+    const results: { question: string; options: string[] }[] = [];
+    const blocks = text.split(/\*\*Question \d+\*\*/i).filter(b => b.trim());
+    
+    for (const block of blocks) {
+      const lines = block.trim().split('\n').filter(l => l.trim());
+      // First line is the question text (after the "Question X:" marker)
+      const questionLine = lines[0].replace(/^:\s*/, '').trim();
+      
+      // Find the options line
+      const optionsLine = lines.find(l => l.match(/\*\*Options\*\*/i)) || '';
+      const optionsText = optionsLine.replace(/\*\*Options\*\*/i, '').trim();
+      
+      if (questionLine && optionsText) {
+        const parsedOptions = optionsText
+          .split(',')
+          .map(o => o.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '').trim())
+          .filter(Boolean);
+        
+        if (parsedOptions.length >= 2) {
+          results.push({ question: questionLine, options: parsedOptions });
+        }
+      }
+    }
+
+    return results;
+  };
+
+  const applySuggestion = (suggestion: { question: string; options: string[] }) => {
+    setQuestion(suggestion.question);
+    setOptions(suggestion.options.map(o => o).concat(['', '']).slice(0, Math.max(suggestion.options.length, 2)));
+    setShowAiSuggestions(false);
+    setAiSuggestions([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +156,8 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
 
       setQuestion('');
       setOptions(['', '']);
+      setAiSuggestions([]);
+      setShowAiSuggestions(false);
       onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -86,7 +176,22 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
       className="space-y-6"
     >
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">Poll Question</label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-slate-300">Poll Question</label>
+          <button
+            type="button"
+            onClick={handleGetAiSuggestions}
+            disabled={aiLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-300 hover:text-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {aiLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            AI Suggestions
+          </button>
+        </div>
         <input
           type="text"
           value={question}
@@ -96,6 +201,60 @@ export default function CreatePollForm({ onSuccess }: CreatePollFormProps) {
           maxLength={500}
         />
       </div>
+
+      {/* AI Suggestions Panel */}
+      <AnimatePresence>
+        {showAiSuggestions && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl bg-cyan-500/5 border border-cyan-500/15 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-semibold text-cyan-200">AI Suggestions</span>
+              </div>
+              
+              {aiLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                  >
+                    <Sparkles className="w-8 h-8 text-cyan-400/50" />
+                  </motion.div>
+                </div>
+              ) : aiSuggestions.length > 0 ? (
+                <div className="space-y-2">
+                  {aiSuggestions.map((suggestion, idx) => (
+                    <motion.button
+                      key={idx}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.1 }}
+                      type="button"
+                      onClick={() => applySuggestion(suggestion)}
+                      className="w-full text-left p-3 rounded-lg bg-white/[0.03] hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/30 transition-all group"
+                    >
+                      <p className="text-sm font-medium text-slate-200 group-hover:text-cyan-200 transition-colors">
+                        {suggestion.question}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {suggestion.options.length} options • Click to apply
+                      </p>
+                    </motion.button>
+                  ))}
+                  <p className="text-xs text-slate-500 pt-1 text-center">
+                    Click a suggestion to fill the form instantly
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div>
         <label className="block text-sm font-medium text-slate-300 mb-3">Options</label>
