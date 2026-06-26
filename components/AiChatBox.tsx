@@ -2,12 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Sparkles, Bot, User } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles, Bot, User, RefreshCw } from 'lucide-react';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  isError?: boolean;
+  retryContent?: string; // stores the user message that caused the error, for retry
 }
 
 const WELCOME_MESSAGE: Message = {
@@ -16,11 +18,14 @@ const WELCOME_MESSAGE: Message = {
   content: "Hey! I'm your Poll Pulse AI assistant 🎯 Ask me for poll ideas, voting tips, or anything about the platform!",
 };
 
+const SEND_COOLDOWN_MS = 1500;
+
 export default function AiChatBox() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCoolingDown, setIsCoolingDown] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,9 +43,9 @@ export default function AiChatBox() {
     }
   }, [isOpen]);
 
-  const sendMessage = async () => {
-    const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
+  const sendMessage = async (overrideContent?: string) => {
+    const trimmed = (overrideContent || input).trim();
+    if (!trimmed || isLoading || isCoolingDown) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -48,12 +53,20 @@ export default function AiChatBox() {
       content: trimmed,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
+    // Only add user message bubble if it's not a retry (retry reuses existing bubble)
+    if (!overrideContent) {
+      setMessages((prev) => [...prev, userMessage]);
+      setInput('');
+    }
+
     setIsLoading(true);
 
+    // Start cooldown
+    setIsCoolingDown(true);
+    setTimeout(() => setIsCoolingDown(false), SEND_COOLDOWN_MS);
+
     try {
-      const chatHistory = [...messages.filter((m) => m.id !== 'welcome'), userMessage].map(
+      const chatHistory = [...messages.filter((m) => m.id !== 'welcome' && !m.isError), userMessage].map(
         ({ role, content }) => ({ role, content })
       );
 
@@ -63,7 +76,11 @@ export default function AiChatBox() {
         body: JSON.stringify({ messages: chatHistory }),
       });
 
-      if (!res.ok) throw new Error('Failed to get response');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        const errorText = getErrorMessage(res.status, errorData?.error);
+        throw new Error(errorText);
+      }
 
       const data = await res.json();
       const aiMessage: Message = {
@@ -73,16 +90,24 @@ export default function AiChatBox() {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-    } catch {
+    } catch (err) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+        content: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+        isError: true,
+        retryContent: trimmed,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRetry = (retryContent: string, errorMessageId: string) => {
+    // Remove the error message, then resend
+    setMessages((prev) => prev.filter((m) => m.id !== errorMessageId));
+    sendMessage(retryContent);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -185,25 +210,43 @@ export default function AiChatBox() {
                     className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
                       msg.role === 'user'
                         ? 'bg-violet-500/20 border border-violet-500/30'
-                        : 'bg-cyan-500/20 border border-cyan-500/30'
+                        : msg.isError
+                          ? 'bg-red-500/20 border border-red-500/30'
+                          : 'bg-cyan-500/20 border border-cyan-500/30'
                     }`}
                   >
                     {msg.role === 'user' ? (
                       <User className="w-3.5 h-3.5 text-violet-300" />
                     ) : (
-                      <Bot className="w-3.5 h-3.5 text-cyan-300" />
+                      <Bot className={`w-3.5 h-3.5 ${msg.isError ? 'text-red-300' : 'text-cyan-300'}`} />
                     )}
                   </div>
 
                   {/* Bubble */}
-                  <div
-                    className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-violet-500/20 text-violet-100 rounded-tr-md border border-violet-500/15'
-                        : 'bg-white/[0.06] text-slate-200 rounded-tl-md border border-white/[0.06]'
-                    }`}
-                  >
-                    {msg.content}
+                  <div className="flex flex-col gap-1.5 max-w-[75%]">
+                    <div
+                      className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-violet-500/20 text-violet-100 rounded-tr-md border border-violet-500/15'
+                          : msg.isError
+                            ? 'bg-red-500/10 text-red-200 rounded-tl-md border border-red-500/20'
+                            : 'bg-white/[0.06] text-slate-200 rounded-tl-md border border-white/[0.06]'
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+
+                    {/* Retry button for error messages */}
+                    {msg.isError && msg.retryContent && (
+                      <button
+                        onClick={() => handleRetry(msg.retryContent!, msg.id)}
+                        disabled={isLoading}
+                        className="flex items-center gap-1.5 text-xs text-red-300/80 hover:text-red-200 transition-colors self-start px-2 py-1 rounded-lg hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Retry
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -248,10 +291,11 @@ export default function AiChatBox() {
                   placeholder="Ask about polls..."
                   className="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder-slate-500 py-2"
                   disabled={isLoading}
+                  maxLength={1000}
                 />
                 <button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || isLoading}
+                  onClick={() => sendMessage()}
+                  disabled={!input.trim() || isLoading || isCoolingDown}
                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 text-cyan-400"
                 >
                   <Send className="w-4 h-4" />
@@ -263,4 +307,22 @@ export default function AiChatBox() {
       </AnimatePresence>
     </>
   );
+}
+
+/**
+ * Maps HTTP status codes and API error messages to user-friendly strings.
+ */
+function getErrorMessage(status: number, apiError?: string): string {
+  switch (status) {
+    case 400:
+      return apiError || 'Your message could not be processed. Please try rephrasing.';
+    case 429:
+      return '⏳ Rate limit reached. Please wait a moment and try again.';
+    case 503:
+      return '🔧 The AI service is temporarily unavailable. Please try again later.';
+    case 504:
+      return '⏱️ The AI took too long to respond. Please try again.';
+    default:
+      return apiError || "Something went wrong. Please try again in a moment.";
+  }
 }

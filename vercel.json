@@ -5,6 +5,7 @@
   "env": {
     "MONGODB_URI": "@mongodb_uri",
     "JWT_SECRET": "@jwt_secret",
+    "GROQ_API_KEY": "@groq_api_key",
     "NODE_ENV": "production"
   }
 }

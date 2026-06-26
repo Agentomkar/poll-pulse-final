@@ -2,6 +2,10 @@
 
 Poll Pulse is an AI-assisted polling web application that helps users create polls, collect responses, and view voting results from one clean dashboard. **Now with full authentication and database-backed polls!**
 
+## 🚀 Live Demo
+
+*(Deployment skipped for now — local dev mode active)*
+
 ## What the App Does
 
 Poll Pulse allows users to:
@@ -13,6 +17,7 @@ Poll Pulse allows users to:
 * **Manage polls** (update or delete your own polls)
 * **Track results** with live vote counts and percentages
 * **Secure sessions** with JWT authentication
+* **Get AI suggestions** with built-in guardrails and rate limiting
 
 ## Who It Is For
 
@@ -57,6 +62,7 @@ Each poll displays:
 - Vote button to participate
 
 ## Current Features ✅
+
 
 ### Authentication
 - [x] User signup with email validation
@@ -289,12 +295,13 @@ The app remains runnable after every change. Features are added screen by screen
 - Real-time voting and result updates
 - Production-ready deployment configs
 
-✅ **Day 3 Complete**: AI-powered features
+✅ **Day 3 Complete**: AI-powered features & Guardrails
 - LLM provider: Groq
 - SDK: groq-sdk
 - Secret handling: GROQ_API_KEY in env
 - API route: `/api/ai`
 - Feature: AI chatbox sends text and receives real AI response
+- **Guardrails**: Message length limits, rate-limit catching, and robust error handling to prevent API abuse.
 
 ## Future Features (Day 3+)
 
