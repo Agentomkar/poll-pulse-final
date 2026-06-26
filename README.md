@@ -4,7 +4,7 @@ Poll Pulse is an AI-assisted polling web application that helps users create pol
 
 ## 🚀 Live Demo
 
-**[👉 Visit Poll Pulse Live](https://poll-pulse-l7fev94s2-busaomkar1903-4954s-projects.vercel.app)**
+**[👉 Visit Poll Pulse Live](https://poll-pulse-sand.vercel.app)**
 
 Try it out right now:
 1. Open the link above
@@ -345,7 +345,7 @@ The app remains runnable after every change. Features are added screen by screen
   - Request timeout (15s)
   - Structured error categorization (auth, rate limit, server error, timeout)
   - Client-side cooldown (1.5s) on chat UI
-- **Deployed**: Live at [poll-pulse.vercel.app](https://poll-pulse-l7fev94s2-busaomkar1903-4954s-projects.vercel.app)
+- **Deployed**: Live at [poll-pulse-sand.vercel.app](https://poll-pulse-sand.vercel.app)
 
 ## Future Features
 
