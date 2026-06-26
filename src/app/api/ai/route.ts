@@ -28,6 +28,15 @@ const INJECTION_PATTERNS = [
   /forget\s+(everything|all|your\s+instructions)/i,
   /act\s+as\s+if\s+you\s+have\s+no\s+restrictions/i,
   /pretend\s+you\s+are\s+not\s+an?\s+ai/i,
+  /[\s\S]*<\s*system\s*>[\s\S]*/i,
+  /[\s\S]*<\s*assistant\s*>[\s\S]*/i,
+];
+
+// Patterns to flag in AI responses (guardrails against harmful output)
+const HARMFUL_RESPONSE_PATTERNS = [
+  /(how\s+to\s+)?(make|create|build)\s+(a|an)?\s*(weapon|bomb|explosive|poison)/i,
+  /(how\s+to\s+)?(hack|crack|break\s+into)\s+/i,
+  /(instructions?\s+for|steps?\s+to)\s+(commit|perform|execute)\s+(a|an)?\s*(crime|fraud|illegal)/i,
 ];
 
 const VALID_ROLES = new Set(['user', 'assistant']);
@@ -35,11 +44,51 @@ const MAX_MESSAGES = 10;
 const MAX_MESSAGE_LENGTH = 1000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+// --- IP-based rate limiting ---
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 20;
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap) {
+    if (now > value.resetAt) rateLimitMap.delete(key);
+  }
+}, 300_000);
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
+  }
+  entry.count++;
+  return { allowed: entry.count <= RATE_LIMIT_MAX_REQUESTS, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count };
+}
+
+/**
+ * Normalizes user input: strips control characters, trims whitespace.
+ */
+function normalizeContent(content: string): string {
+  return content
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // strip control chars
+    .trim();
+}
+
 /**
  * Checks if a message content contains prompt injection patterns.
  */
 function containsInjection(content: string): boolean {
   return INJECTION_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+/**
+ * Checks if AI response contains potentially harmful content.
+ */
+function containsHarmfulContent(content: string): boolean {
+  return HARMFUL_RESPONSE_PATTERNS.some((pattern) => pattern.test(content));
 }
 
 export async function POST(req: NextRequest) {
@@ -51,6 +100,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Invalid JSON in request body.' },
       { status: 400 }
+    );
+  }
+
+  // --- Guard: IP-based rate limiting ---
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || '127.0.0.1';
+  const { allowed, remaining } = checkRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. You can send ${RATE_LIMIT_MAX_REQUESTS} requests per minute. Please wait and try again.` },
+      { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
     );
   }
 
@@ -108,8 +169,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Normalize content
+      const normalizedContent = normalizeContent(msg.content);
+
       // Content length check
-      if (msg.content.length > MAX_MESSAGE_LENGTH) {
+      if (normalizedContent.length > MAX_MESSAGE_LENGTH) {
         return NextResponse.json(
           { error: `Message at index ${i} exceeds max length of ${MAX_MESSAGE_LENGTH} characters.` },
           { status: 400 }
@@ -117,7 +181,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Content emptiness check
-      if (msg.content.trim().length === 0) {
+      if (normalizedContent.length === 0) {
         return NextResponse.json(
           { error: `Message at index ${i} cannot be empty or whitespace only.` },
           { status: 400 }
@@ -125,7 +189,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Prompt injection check (only on user messages)
-      if (msg.role === 'user' && containsInjection(msg.content)) {
+      if (msg.role === 'user' && containsInjection(normalizedContent)) {
         return NextResponse.json(
           { error: 'Your message was flagged by our content filter. Please rephrase and try again.' },
           { status: 400 }
@@ -138,7 +202,7 @@ export async function POST(req: NextRequest) {
       { role: 'system', content: SYSTEM_PROMPT },
       ...messages.map((m: { role: string; content: string }) => ({
         role: m.role,
-        content: m.content,
+        content: normalizeContent(m.content),
       })),
     ];
 
@@ -171,6 +235,14 @@ export async function POST(req: NextRequest) {
       console.warn('Groq returned an empty response:', JSON.stringify(chatCompletion?.choices));
       return NextResponse.json({
         reply: "I wasn't able to come up with a response just now. Could you try rephrasing your question?",
+      });
+    }
+
+    // --- Guard: Check AI response for harmful content ---
+    if (containsHarmfulContent(reply)) {
+      console.warn('Groq returned a response flagged as potentially harmful');
+      return NextResponse.json({
+        reply: "I'm sorry, but I can't provide that type of information. I'm here to help with polls and platform questions — feel free to ask me something else!",
       });
     }
 
