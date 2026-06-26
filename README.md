@@ -4,7 +4,16 @@ Poll Pulse is an AI-assisted polling web application that helps users create pol
 
 ## 🚀 Live Demo
 
-*(Deployment skipped for now — local dev mode active)*
+**[👉 Visit Poll Pulse Live](https://poll-pulse-l7fev94s2-busaomkar1903-4954s-projects.vercel.app)**
+
+Try it out right now:
+1. Open the link above
+2. Sign up for a new account (email + password)
+3. Create a poll with multiple options
+4. Vote on polls and see real-time results
+5. Click the chat bubble (bottom-right) to ask **Poll Pulse AI** for poll suggestions, voting tips, or platform guidance 🎯
+
+> **Note:** The AI chat is powered by Groq (Llama 3.3-70B). If the AI is unavailable, the UI will show a friendly fallback message with a retry option.
 
 ## What the App Does
 
@@ -96,6 +105,17 @@ Each poll displays:
 - [x] Automatic timestamps
 - [x] Owner relationship tracking
 
+## AI Chat Guardrails 🛡️
+
+The AI chat endpoint (`POST /api/ai`) includes multiple layers of protection:
+
+- **Input validation**: Message length limits (1000 chars), role checks, content emptiness checks
+- **Prompt injection detection**: Regex patterns that flag and reject common injection attempts
+- **Harmful response filtering**: AI output is scanned for potentially harmful content before returning to the user
+- **IP-based rate limiting**: 20 requests per minute per IP address
+- **Timeout protection**: Requests are aborted after 15 seconds
+- **Request body parsing safety**: Invalid JSON is caught gracefully
+
 ## Data Shape
 
 ```typescript
@@ -131,7 +151,8 @@ type Poll = {
 * **Backend**: Next.js API Routes
 * **Database**: MongoDB Atlas (cloud)
 * **Authentication**: JWT + bcryptjs
-* **Deployment**: Vercel or Docker
+* **AI Provider**: Groq (Llama 3.3-70B)
+* **Deployment**: Vercel
 * **Development**: Node.js, npm
 
 ## API Endpoints
@@ -149,6 +170,9 @@ type Poll = {
 - `DELETE /api/polls/[id]` - Delete poll (owner only)
 - `POST /api/polls/[id]/vote` - Vote on poll option
 
+### AI
+- `POST /api/ai` - Send a message to Poll Pulse AI (with guardrails)
+
 ## Project Structure
 
 ```
@@ -159,6 +183,8 @@ Poll-Pulse/
 │   │   │   ├── signup/route.ts
 │   │   │   ├── login/route.ts
 │   │   │   └── logout/route.ts
+│   │   ├── ai/                 # AI chat endpoint
+│   │   │   └── route.ts
 │   │   └── polls/              # Polls endpoints
 │   │       ├── route.ts        # GET all, POST create
 │   │       └── [id]/           # Individual poll routes
@@ -168,6 +194,7 @@ Poll-Pulse/
 │   ├── layout.tsx
 │   └── globals.css
 ├── components/
+│   ├── AiChatBox.tsx           # AI chat UI with retry, cooldown, error states
 │   ├── LoginForm.tsx           # Login form
 │   ├── SignupForm.tsx          # Signup form
 │   ├── CreatePollForm.tsx      # Poll creation
@@ -192,6 +219,7 @@ Poll-Pulse/
 - Node.js 18+
 - MongoDB Atlas account (free tier available)
 - npm or yarn
+- Groq API key (free at console.groq.com)
 
 ### Installation
 
@@ -209,6 +237,7 @@ cp .env.example .env.local
 # Edit .env.local with your:
 # MONGODB_URI=your-mongodb-connection-string
 # JWT_SECRET=your-secret-key
+# GROQ_API_KEY=your-groq-api-key
 ```
 
 ### Running Locally
@@ -222,6 +251,7 @@ Visit `http://localhost:3000` and:
 2. Create a poll
 3. Vote on polls
 4. See real-time results
+5. Chat with Poll Pulse AI (bottom-right corner)
 
 ### Building for Production
 
@@ -234,16 +264,19 @@ npm start
 
 ### Deploy to Vercel (Recommended)
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
+
 ```bash
 # Push to GitHub
 git push origin main
 
-# Go to vercel.com
-# Import your repository
-# Add environment variables:
+# Deploy to Vercel
+npx vercel --prod
+
+# Set environment variables in Vercel dashboard:
 #   MONGODB_URI
 #   JWT_SECRET
-# Click Deploy
+#   GROQ_API_KEY
 ```
 
 ### Deploy with Docker
@@ -253,6 +286,7 @@ docker build -t poll-pulse .
 docker run -p 3000:3000 \
   -e MONGODB_URI="..." \
   -e JWT_SECRET="..." \
+  -e GROQ_API_KEY="..." \
   poll-pulse
 ```
 
@@ -275,6 +309,8 @@ See `API_TESTING_GUIDE.md` for:
 - [ ] Update poll (change question, close it)
 - [ ] Delete poll
 - [ ] Logout and verify session cleared
+- [ ] Open AI chat, ask for poll suggestions
+- [ ] Test AI guardrails (send very long message, should reject)
 
 ## Documentation
 
@@ -296,16 +332,23 @@ The app remains runnable after every change. Features are added screen by screen
 - Production-ready deployment configs
 
 ✅ **Day 3 Complete**: AI-powered features & Guardrails
-- LLM provider: Groq
+- LLM provider: Groq (Llama 3.3-70B)
 - SDK: groq-sdk
 - Secret handling: GROQ_API_KEY in env
 - API route: `/api/ai`
 - Feature: AI chatbox sends text and receives real AI response
-- **Guardrails**: Message length limits, rate-limit catching, and robust error handling to prevent API abuse.
+- **Guardrails**:
+  - IP-based rate limiting (20 req/min)
+  - Input validation (length, emptiness, role checks)
+  - Prompt injection detection
+  - Harmful response filtering
+  - Request timeout (15s)
+  - Structured error categorization (auth, rate limit, server error, timeout)
+  - Client-side cooldown (1.5s) on chat UI
+- **Deployed**: Live at [poll-pulse.vercel.app](https://poll-pulse-l7fev94s2-busaomkar1903-4954s-projects.vercel.app)
 
-## Future Features (Day 3+)
+## Future Features
 
-* Add AI-generated poll suggestions using Groq
 * Implement real-time updates with WebSockets
 * Add poll templates and categories
 * Create user profiles with poll history
@@ -323,6 +366,7 @@ The app remains runnable after every change. Features are added screen by screen
 - ✅ Owner-only poll updates and deletes
 - ✅ Input validation on all endpoints
 - ✅ Type-safe TypeScript throughout
+- ✅ AI guardrails: injection detection, rate limiting, harmful content filtering
 
 ## Contributing
 
