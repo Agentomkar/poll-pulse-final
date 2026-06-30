@@ -2,6 +2,14 @@
 
 # dependencies
 /node_modules
+Blood-bank-management-system/node_modules/
+Blood-bank-management-system/.next/
+Blood-bank-management-system/.env
+Blood-bank-management-system/.env*.local
+Blood-bank-management-system/.vercel/
+Blood-bank-management-system/*.tsbuildinfo
+Blood-bank-management-system/next-env.d.ts
+Blood-bank-management-system/.git/
 /.pnp
 .pnp.*
 .yarn/*
